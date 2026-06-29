@@ -91,6 +91,27 @@ sudo systemctl restart msu2-linux
 
 服务默认以 `root` 用户运行，以便读取硬件温度并访问 USB 串口设备。
 
+## 构建 Windows EXE
+
+在 Windows 项目根目录运行一键打包脚本：
+
+```bat
+build-exe.bat
+```
+
+脚本会安装运行依赖和 PyInstaller，并生成单文件程序：
+
+```text
+dist\msu2-linux.exe
+```
+
+EXE 内已包含全部四套显示模板，使用方式与 Python 统一入口一致：
+
+```bat
+dist\msu2-linux.exe --list-templates
+dist\msu2-linux.exe --template MSU2_LINUX.py --refresh-interval 1.5 --flip-vertical true
+```
+
 ## 命令行参数
 
 手动运行时可使用与服务配置对应的命令行参数：

@@ -60,13 +60,21 @@ def create_argument_parser():
     return parser
 
 
+def get_resource_directory():
+    """返回源码目录或 PyInstaller 单文件程序的临时资源目录。"""
+    bundled_directory = getattr(sys, "_MEIPASS", None)
+    if bundled_directory:
+        return Path(bundled_directory)
+    return Path(__file__).resolve().parent
+
+
 def run_template(template_name, arguments, remaining_arguments):
     """校验模板名称并使用统一配置启动对应脚本。"""
     if template_name not in TEMPLATE_FILES:
         available = "、".join(TEMPLATE_FILES)
         raise SystemExit(f"不支持的模板脚本：{template_name}；可用模板：{available}")
 
-    script_path = Path(__file__).resolve().with_name(template_name)
+    script_path = get_resource_directory() / template_name
     if not script_path.is_file():
         raise SystemExit(f"模板脚本不存在：{script_path}")
 

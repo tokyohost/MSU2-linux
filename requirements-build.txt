@@ -1,0 +1,2 @@
+# Windows EXE 打包工具，仅在构建阶段使用。
+pyinstaller>=6.0

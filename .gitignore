@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 *.py[cod]
 *.deb
+*.exe
 *.build
 *.buildinfo
 *.changes
@@ -12,3 +13,5 @@ debian/.debhelper/
 debian/debhelper-build-stamp
 debian/files
 debian/msu2-linux/
+build/
+dist/
