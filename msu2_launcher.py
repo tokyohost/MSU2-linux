@@ -2,8 +2,10 @@
 """为 MSU2 多套显示仪表盘提供统一启动入口。"""
 
 import argparse
+import ctypes
 import os
 import runpy
+import subprocess
 import sys
 from pathlib import Path
 
@@ -24,6 +26,31 @@ TEMPLATE_ALIASES = {
     "MSU2_LINUX-2.py": "msu2_dashboard_overview.py",
     "MSU2_LINUX-3.py": "msu2_dashboard_disk_temperature.py",
 }
+
+
+def ensure_windows_administrator():
+    """确保 Windows 主进程具有管理员权限，否则通过 UAC 重新启动。"""
+    if sys.platform != "win32" or ctypes.windll.shell32.IsUserAnAdmin():
+        return True
+
+    if getattr(sys, "frozen", False):
+        executable_path = str(Path(sys.executable).resolve())
+        arguments = subprocess.list2cmdline(sys.argv[1:])
+    else:
+        executable_path = str(Path(sys.executable).resolve())
+        arguments = subprocess.list2cmdline([str(Path(__file__).resolve()), *sys.argv[1:]])
+
+    result = ctypes.windll.shell32.ShellExecuteW(
+        None,
+        "runas",
+        executable_path,
+        arguments,
+        str(Path(executable_path).parent),
+        1,
+    )
+    if result <= 32 and sys.stderr is not None:
+        print("程序必须以管理员身份运行。", file=sys.stderr)
+    return False
 
 
 def parse_boolean(value):
@@ -109,6 +136,9 @@ def main():
     """解析公共配置并将执行流程分派给选定模板。"""
     parser = create_argument_parser()
     arguments, remaining_arguments = parser.parse_known_args()
+    if sys.platform == "win32" and not arguments.worker:
+        if not ensure_windows_administrator():
+            return
     if arguments.list_templates:
         if sys.stdout is not None:
             print("\n".join(TEMPLATE_FILES))

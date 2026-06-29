@@ -150,7 +150,7 @@ if ($values.Count -eq 0) {
             values = [values]
         normalized = [self._normalize_temperature(value) for value in values]
         normalized = [value for value in normalized if value is not None]
-        self.cpu_temperature_cache = round(sum(normalized) / len(normalized)) if normalized else None
+        self.cpu_temperature_cache = round(max(normalized)) if normalized else None
         self.cpu_temperature_time = now
         return self.cpu_temperature_cache
 

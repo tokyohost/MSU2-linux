@@ -165,17 +165,17 @@ class SystemMonitor:
         return data
     
     def get_cpu_temperature(self):
-        """获取 CPU 温度（仅适用于 Linux）"""
+        """获取 Linux CPU 有效传感器中的最高温度。"""
         try:
             temps = psutil.sensors_temperatures()
             if 'coretemp' in temps:
                 # Intel CPU
-                core_temp = temps['coretemp'][0].current
-                return round(core_temp)
+                core_temperatures = [entry.current for entry in temps['coretemp']]
+                return round(max(core_temperatures)) if core_temperatures else "N/A"
             elif 'cpu_thermal' in temps:
                 # 树莓派等 ARM 设备
-                cpu_temp = temps['cpu_thermal'][0].current
-                return round(cpu_temp)
+                cpu_temperatures = [entry.current for entry in temps['cpu_thermal']]
+                return round(max(cpu_temperatures)) if cpu_temperatures else "N/A"
             else:
                 return "N/A"
         except Exception as e:

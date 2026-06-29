@@ -27,7 +27,7 @@ SHOW_HEIGHT = 80
 SERIAL_BAUDRATE = 115200
 REFRESH_INTERVAL = 1.0
 LCD_FLIP_VERTICAL = False
-PING_TARGET = "1.1.1.1"
+PING_TARGET = "www.baidu.com"
 
 # 仪表盘颜色（RGB888）。
 BLACK = (0, 0, 0)
@@ -136,8 +136,8 @@ class SystemMonitor:
     def get_cached_data(self):
         """立即返回最近一次完成的数据快照，不等待任何系统查询。"""
         self.start_data_collection()
-        with self.data_lock:
-            return dict(self.cached_data)
+        # with self.data_lock:
+        return dict(self.cached_data)
 
     def wait_for_data(self, timeout=None):
         """等待首份后台数据，供非实时预览模式使用。"""
@@ -219,7 +219,8 @@ class SystemMonitor:
 
         highest_priority = max(priority for priority, _ in candidates)
         preferred_values = [value for priority, value in candidates if priority == highest_priority]
-        return round(sum(preferred_values) / len(preferred_values))
+
+        return round(max(preferred_values))
 
     @staticmethod
     def _normalize_temperature(raw_value):
