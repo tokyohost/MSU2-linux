@@ -483,10 +483,15 @@ class SystemMonitor:
     def _draw_footer(self, draw, data):
         """绘制底部日期时间及系统运行时长。"""
         now = data["current_time"]
+        time_text = now.strftime("%m-%d %H:%M:%S")
+        uptime_text = self._format_uptime(data["uptime"])
+        time_bottom = draw.textbbox((0, 0), time_text, font=self.font_small)[3]
+        uptime_bottom = draw.textbbox((0, 0), uptime_text, font=self.font_small)[3]
+        # 根据实际字体下沿自适应上移，兼容 Linux 字体比 Windows 多出的一个像素。
+        footer_y = min(72, SHOW_HEIGHT - 1 - max(time_bottom, uptime_bottom))
         draw.line((2, 69, 157, 69), fill=GRAY)
-        draw.text((4, 72), now.strftime("%m-%d %H:%M:%S"), font=self.font_small, fill=WHITE)
-        draw.text((157, 72), self._format_uptime(data['uptime']),
-                  font=self.font_small, fill=WHITE, anchor="ra")
+        draw.text((4, footer_y), time_text, font=self.font_small, fill=WHITE)
+        draw.text((157, footer_y), uptime_text, font=self.font_small, fill=WHITE, anchor="ra")
 
     def get_display_data(self):
         """基于缓存快照生成持续推进的当前显示数据。"""
