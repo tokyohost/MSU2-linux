@@ -58,6 +58,7 @@ class SystemMonitor:
         counters = psutil.net_io_counters()
         self.last_net_bytes = (counters.bytes_sent, counters.bytes_recv)
         self.last_net_time = time.monotonic()
+        self.font_tiny = self._load_font(6)
         self.font_small = self._load_font(7)
         self.font_normal = self._load_font(8)
         self.font_large = self._load_font(10)
@@ -101,6 +102,8 @@ class SystemMonitor:
             unit_index += 1
         divisor = 1024 ** unit_index
         scaled_used = used_bytes / divisor
+        if units[unit_index] == "T":
+            return f"{scaled_used:.2f}/{scaled_total:.2f}T"
         return f"{scaled_used:.0f}/{scaled_total:.0f}{units[unit_index]}"
 
     @staticmethod
@@ -365,7 +368,7 @@ class SystemMonitor:
         draw.text((84, 2), "磁盘", font=self.font_normal, fill=YELLOW)
         draw.text((117, 2), f"{data['disk_percent']}%", font=self.font_normal, fill=YELLOW, anchor="ra")
         self._draw_progress(draw, (84, 13, 117, 17), data["disk_percent"], YELLOW)
-        draw.text((84, 21), data["disk_capacity"], font=self.font_small, fill=WHITE)
+        draw.text((84, 21), data["disk_capacity"], font=self.font_tiny, fill=WHITE)
 
         draw.text((123, 2), "网络", font=self.font_normal, fill=PURPLE)
         draw.text((157, 11), "在线" if data["online"] else "离线", font=self.font_normal,
