@@ -3,4 +3,4 @@
 # 启动 Debian 软件包安装的 MSU2 Linux 统一入口。
 set -eu
 
-exec /usr/bin/python3 /usr/lib/msu2-linux/msu2_linux_launcher.py "$@"
+exec /usr/bin/python3 /usr/lib/msu2-linux/msu2_launcher.py "$@"

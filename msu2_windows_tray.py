@@ -48,7 +48,7 @@ class WindowsTrayApplication:
         """返回当前打包程序或源码入口的绝对路径。"""
         if getattr(sys, "frozen", False):
             return Path(sys.executable).resolve()
-        return Path(__file__).resolve().with_name("msu2_linux_launcher.py")
+        return Path(__file__).resolve().with_name("msu2_launcher.py")
 
     def _acquire_single_instance(self):
         """获取托盘程序互斥锁，避免重复启动多个实例。"""
@@ -60,7 +60,7 @@ class WindowsTrayApplication:
         """构造后台监控子进程命令行。"""
         if getattr(sys, "frozen", False):
             return [sys.executable, "--worker", *self.worker_arguments]
-        launcher_path = Path(__file__).resolve().with_name("msu2_linux_launcher.py")
+        launcher_path = Path(__file__).resolve().with_name("msu2_launcher.py")
         return [sys.executable, str(launcher_path), "--worker", *self.worker_arguments]
 
     def _rotate_log_file(self):

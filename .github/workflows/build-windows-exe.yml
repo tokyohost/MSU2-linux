@@ -52,7 +52,7 @@ jobs:
       - name: 构建并验证 EXE
         shell: pwsh
         run: |
-          python -m PyInstaller --clean --noconfirm msu2-linux.spec
+          python -m PyInstaller --clean --noconfirm msu2_windows.spec
           Move-Item -LiteralPath "dist/msu2-linux.exe" -Destination "dist/${{ matrix.asset_name }}"
           & "dist/${{ matrix.asset_name }}" --list-templates
 

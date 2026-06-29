@@ -16,10 +16,10 @@ import psutil
 from PIL import ImageFont
 
 
-def _load_base_module():
-    """从同目录加载 MSU2_LINUX-2.py 作为硬件通信与基础绘图模块。"""
-    module_path = Path(__file__).with_name("MSU2_LINUX-2.py")
-    specification = importlib.util.spec_from_file_location("msu2_linux_2", module_path)
+def _load_overview_module():
+    """从同目录加载现代综合仪表盘作为硬件通信与基础绘图模块。"""
+    module_path = Path(__file__).with_name("msu2_dashboard_overview.py")
+    specification = importlib.util.spec_from_file_location("msu2_dashboard_overview", module_path)
     if specification is None or specification.loader is None:
         raise ImportError(f"无法加载基础模块：{module_path}")
     module = importlib.util.module_from_spec(specification)
@@ -28,7 +28,7 @@ def _load_base_module():
     return module
 
 
-base = _load_base_module()
+base = _load_overview_module()
 logger = logging.getLogger("MSU2-磁盘温度")
 
 # WMI、SMART 与 sysfs 温度等慢速参数的缓存时间（秒）。

@@ -2,14 +2,14 @@
 """将统一入口及全部显示模板打包为单文件 Windows EXE。"""
 
 template_files = [
-    "MSU2_LINUX.py",
-    "MSU2-LINUX-1.py",
-    "MSU2_LINUX-2.py",
-    "MSU2_LINUX-3.py",
+    "msu2_dashboard_classic.py",
+    "msu2_dashboard_temperature.py",
+    "msu2_dashboard_overview.py",
+    "msu2_dashboard_disk_temperature.py",
 ]
 
 analysis = Analysis(
-    ["msu2_linux_launcher.py"],
+    ["msu2_launcher.py"],
     pathex=[],
     binaries=[],
     datas=[(template_file, ".") for template_file in template_files]

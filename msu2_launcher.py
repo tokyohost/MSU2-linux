@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""为 MSU2 Linux 的多套显示模板提供统一启动入口。"""
+"""为 MSU2 多套显示仪表盘提供统一启动入口。"""
 
 import argparse
 import os
@@ -9,12 +9,21 @@ from pathlib import Path
 
 
 TEMPLATE_FILES = (
-    "MSU2_LINUX.py",
-    "MSU2-LINUX-1.py",
-    "MSU2_LINUX-2.py",
-    "MSU2_LINUX-3.py",
+    "msu2_dashboard_classic.py",
+    "msu2_dashboard_temperature.py",
+    "msu2_dashboard_overview.py",
+    "msu2_dashboard_disk_temperature.py",
 )
-MODERN_TEMPLATE_FILES = {"MSU2_LINUX-2.py", "MSU2_LINUX-3.py"}
+MODERN_TEMPLATE_FILES = {
+    "msu2_dashboard_overview.py",
+    "msu2_dashboard_disk_temperature.py",
+}
+TEMPLATE_ALIASES = {
+    "MSU2_LINUX.py": "msu2_dashboard_classic.py",
+    "MSU2-LINUX-1.py": "msu2_dashboard_temperature.py",
+    "MSU2_LINUX-2.py": "msu2_dashboard_overview.py",
+    "MSU2_LINUX-3.py": "msu2_dashboard_disk_temperature.py",
+}
 
 
 def parse_boolean(value):
@@ -32,7 +41,7 @@ def create_argument_parser():
     parser = argparse.ArgumentParser(description="MSU2 Linux 统一启动入口")
     parser.add_argument(
         "--template",
-        default=os.environ.get("MSU2_TEMPLATE", "MSU2_LINUX-3.py"),
+        default=os.environ.get("MSU2_TEMPLATE", "msu2_dashboard_disk_temperature.py"),
         metavar="脚本名称",
         help="显示模板对应的脚本名称",
     )
@@ -71,6 +80,7 @@ def get_resource_directory():
 
 def run_template(template_name, arguments, remaining_arguments):
     """校验模板名称并使用统一配置启动对应脚本。"""
+    template_name = TEMPLATE_ALIASES.get(template_name, template_name)
     if template_name not in TEMPLATE_FILES:
         available = "、".join(TEMPLATE_FILES)
         raise SystemExit(f"不支持的模板脚本：{template_name}；可用模板：{available}")
@@ -106,7 +116,7 @@ def main():
     if arguments.refresh_interval <= 0:
         parser.error("--refresh-interval 必须大于 0")
     if sys.platform == "win32" and not arguments.worker:
-        from windows_tray import WindowsTrayApplication
+        from msu2_windows_tray import WindowsTrayApplication
 
         tray_arguments = [argument for argument in sys.argv[1:] if argument != "--worker"]
         WindowsTrayApplication(tray_arguments).run()
