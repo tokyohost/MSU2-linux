@@ -112,6 +112,21 @@ dist\msu2-linux.exe --list-templates
 dist\msu2-linux.exe --template MSU2_LINUX.py --refresh-interval 1.5 --flip-vertical true
 ```
 
+## 自动构建与发布
+
+项目提供两个 GitHub Actions 工作流：
+
+- Linux 工作流构建 `amd64`、`arm64`、`armhf`、`i386` 四种 DEB 软件包。
+- Windows 工作流使用对应架构的 Python 构建 32 位及 64 位单文件 EXE。
+
+两个工作流都可以在 GitHub Actions 页面手动运行。推送 `v` 开头的版本标签时，
+会自动创建或更新对应的 GitHub Release，并上传全部 DEB 和 EXE：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
 ## 命令行参数
 
 手动运行时可使用与服务配置对应的命令行参数：
