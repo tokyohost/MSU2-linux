@@ -49,10 +49,10 @@ class SystemMonitor:
     def load_font(self):
         """加载字体，使用18号字体以提高可读性"""
         try:
-            font = ImageFont.truetype("arial.ttf", 20)
+            font = ImageFont.truetype("arial.ttf", 16)
         except:
             try:
-                font = ImageFont.truetype("arial.ttf", 20)
+                font = ImageFont.truetype("arial.ttf", 16)
             except:
                 font = ImageFont.load_default()
         return font
