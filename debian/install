@@ -3,5 +3,5 @@ MSU2-LINUX-1.py usr/lib/msu2-linux
 MSU2_LINUX-2.py usr/lib/msu2-linux
 MSU2_LINUX-3.py usr/lib/msu2-linux
 msu2_linux_launcher.py usr/lib/msu2-linux
-debian/msu2-linux usr/bin
+bin/msu2-linux usr/bin
 debian/msu2-linux.conf etc

@@ -46,7 +46,7 @@
 2. 在项目根目录构建软件包：
 
    ```bash
-   chmod 0755 debian/rules debian/msu2-linux
+   chmod 0755 debian/rules bin/msu2-linux
    dpkg-buildpackage --no-sign -b
    ```
 

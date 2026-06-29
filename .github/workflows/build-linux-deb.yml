@@ -46,7 +46,7 @@ jobs:
         env:
           DEB_BUILD_OPTIONS: nocheck
         run: |
-          chmod 0755 debian/rules debian/msu2-linux
+          chmod 0755 debian/rules bin/msu2-linux
           dpkg-buildpackage --build=binary --no-sign --host-arch=${{ matrix.arch }}
           mkdir -p release-assets
           cp ../msu2-linux_*_${{ matrix.arch }}.deb release-assets/
