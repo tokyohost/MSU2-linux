@@ -42,7 +42,10 @@ refresh_interval = 1.0  # 刷新间隔（秒）
 lcd_flip_vertical = False  # 屏幕上下翻转
 
 class SystemMonitor:
+    """采集系统资源数据并生成 LCD 仪表盘画面。"""
+
     def __init__(self):
+        """初始化监控数据容器并加载显示字体。"""
         self.monitor_data = {}
         self.font = self.load_font()
         

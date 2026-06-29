@@ -1,0 +1,14 @@
+Source: msu2-linux
+Section: utils
+Priority: optional
+Maintainer: MSU2 Linux 维护者 <75903649@gmail.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+
+Package: msu2-linux
+Architecture: all
+Depends: ${misc:Depends}, python3, python3-numpy, python3-pil, python3-psutil, python3-serial, fonts-noto-cjk, iputils-ping, smartmontools
+Description: MSU2 USB 小屏幕系统资源监控工具
+ 在 160×80 MSU2 USB LCD 屏幕上实时显示 CPU、内存、磁盘、网络、
+ CPU 温度及多磁盘温度，并通过 systemd 服务自动运行。

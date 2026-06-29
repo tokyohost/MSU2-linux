@@ -1,0 +1,11 @@
+#!/usr/bin/make -f
+
+# 使用 debhelper 完成 Debian 软件包的标准构建流程。
+%:
+	dh $@
+
+# 项目由 Python 脚本直接运行，无需执行额外构建步骤。
+override_dh_auto_build:
+
+# 软件包构建阶段的语法验证由独立测试流程负责。
+override_dh_auto_test:

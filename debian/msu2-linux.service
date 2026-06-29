@@ -1,0 +1,20 @@
+[Unit]
+Description=MSU2 USB 小屏幕系统资源监控服务
+Documentation=file:/usr/share/doc/msu2-linux/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/msu2-linux.conf
+ExecStart=/usr/bin/msu2-linux $MSU2_OPTIONS
+Restart=always
+RestartSec=3
+User=root
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

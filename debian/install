@@ -1,0 +1,4 @@
+MSU2_LINUX-2.py usr/lib/msu2-linux
+MSU2_LINUX-3.py usr/lib/msu2-linux
+debian/msu2-linux usr/bin
+debian/msu2-linux.conf etc

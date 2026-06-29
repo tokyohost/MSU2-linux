@@ -1,0 +1,5 @@
+* text=auto
+*.py text eol=lf
+*.md text eol=lf
+debian/* text eol=lf
+debian/rules text eol=lf

@@ -32,18 +32,48 @@
 
 请查看 `requirements.txt` 文件获取完整的依赖列表。
 
-## 安装步骤
+## 使用 APT 安装
 
-1. 克隆或下载本项目代码
-2. 安装依赖包：
+项目已经提供 Debian 打包配置，适用于 Debian、Ubuntu 及其衍生发行版。
+
+1. 安装构建工具：
+
    ```bash
-   pip install -r requirements.txt
+   sudo apt update
+   sudo apt install build-essential debhelper devscripts
    ```
-3. 连接兼容的LCD显示设备
-4. 运行监控程序：
+
+2. 在项目根目录构建软件包：
+
    ```bash
-   python system_monitor.py
+   chmod 0755 debian/rules debian/msu2-linux
+   dpkg-buildpackage --no-sign -b
    ```
+
+3. 使用 APT 安装生成的软件包及其依赖：
+
+   ```bash
+   sudo apt install ../msu2-linux_1.0.0_all.deb
+   ```
+
+安装完成后，`msu2-linux.service` 会自动启用并立即启动，后续开机时自动运行。
+主程序也可以通过 `msu2-linux` 命令手动启动。
+
+## 服务管理
+
+```bash
+sudo systemctl status msu2-linux
+sudo systemctl restart msu2-linux
+sudo journalctl -u msu2-linux -f
+```
+
+如需设置附加启动参数，可编辑 `/etc/msu2-linux.conf`，然后执行：
+
+```bash
+sudo systemctl restart msu2-linux
+```
+
+服务默认以 `root` 用户运行，以便读取硬件温度并访问 USB 串口设备。
 
 ## 配置说明
 

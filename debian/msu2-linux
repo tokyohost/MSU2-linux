@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# 启动 Debian 软件包安装的 MSU2 Linux 主程序。
+set -eu
+
+exec /usr/bin/python3 /usr/lib/msu2-linux/MSU2_LINUX-3.py "$@"
