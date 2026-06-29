@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -37,7 +38,7 @@ ERROR_RED = (255, 55, 55)
 
 
 class DiskTemperatureMonitor(base.SystemMonitor):
-    """在基础仪表盘上使用最多十二块磁盘的温度替换 Ping 延迟。"""
+    """使用独立慢速线程采集 CPU、Ping 和多磁盘温度。"""
 
     def __init__(self):
         """初始化基础监控状态及磁盘温度缓存。"""
@@ -49,6 +50,32 @@ class DiskTemperatureMonitor(base.SystemMonitor):
         self.cpu_temperature_time = 0.0
         self.ping_cache = None
         self.ping_time = 0.0
+        self.slow_data_thread = None
+        self.cached_data["disk_temperatures"] = ()
+
+    def start_data_collection(self):
+        """分别启动基础数据线程和慢速硬件数据线程。"""
+        super().start_data_collection()
+        if self.slow_data_thread is not None and self.slow_data_thread.is_alive():
+            return
+        self.slow_data_thread = threading.Thread(
+            target=self._slow_data_collection_loop,
+            name="慢速硬件数据采集",
+            daemon=True,
+        )
+        self.slow_data_thread.start()
+
+    def _slow_data_collection_loop(self):
+        """独立采集可能阻塞的 Ping、WMI、SMART 与磁盘温度。"""
+        while True:
+            started = time.monotonic()
+            try:
+                self._collect_ping_delay()
+                self._collect_cpu_temperature()
+                self._get_disk_temperatures()
+            except Exception:
+                logger.exception("慢速硬件数据采集异常")
+            time.sleep(max(0.1, PING_CACHE_SECONDS - (time.monotonic() - started)))
 
     @staticmethod
     def _run_powershell_json(script):
@@ -81,12 +108,16 @@ class DiskTemperatureMonitor(base.SystemMonitor):
             return None
 
     def _get_cpu_temperature(self):
-        """读取 CPU 温度，并在 Windows 上使用硬件监控 WMI 回退。"""
+        """立即返回后台线程缓存的 CPU 温度。"""
+        return self.cpu_temperature_cache
+
+    def _collect_cpu_temperature(self):
+        """在慢速线程读取 CPU 温度，并在 Windows 上使用 WMI 回退。"""
         now = time.monotonic()
         if self.cpu_temperature_time and now - self.cpu_temperature_time < SLOW_DATA_CACHE_SECONDS:
             return self.cpu_temperature_cache
 
-        temperature = super()._get_cpu_temperature()
+        temperature = base.SystemMonitor._get_cpu_temperature()
         if temperature is not None or base.platform.system() != "Windows":
             self.cpu_temperature_cache = temperature
             self.cpu_temperature_time = now
@@ -124,7 +155,11 @@ if ($values.Count -eq 0) {
         return self.cpu_temperature_cache
 
     def _get_ping_delay(self):
-        """定期检测网络延迟，并在检测间隔内复用缓存结果。"""
+        """立即返回后台线程缓存的网络延迟。"""
+        return self.ping_cache
+
+    def _collect_ping_delay(self):
+        """在慢速线程定期检测网络延迟并更新缓存。"""
         now = time.monotonic()
         if self.ping_time and now - self.ping_time < PING_CACHE_SECONDS:
             return self.ping_cache
@@ -369,9 +404,9 @@ if ($items.Count -eq 0) {
         return self.disk_temperature_cache
 
     def collect_system_data(self):
-        """采集基础系统状态，并补充各物理磁盘温度。"""
+        """采集基础系统状态，并读取已缓存的慢速硬件数据。"""
         data = super().collect_system_data()
-        data["disk_temperatures"] = self._get_disk_temperatures()
+        data["disk_temperatures"] = tuple(self.disk_temperature_cache)
         self._log_screen_data(data)
         return data
 

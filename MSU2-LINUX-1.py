@@ -34,9 +34,6 @@ SHOW_HEIGHT = 80   # 屏幕高度
 ser = None
 Device_State = 0
 SER_lock = threading.Lock()
-current_monoto_time = time.monotonic()
-last_refresh_time = current_monoto_time
-wait_time = 0
 ADC_det = 0
 display_mode = 0     # 显示模式: 0=网格布局
 refresh_interval = float(os.environ.get("MSU2_REFRESH_INTERVAL", "1.0"))  # 刷新间隔（秒）
@@ -51,6 +48,30 @@ class SystemMonitor:
         """初始化监控数据容器并加载显示字体。"""
         self.monitor_data = {}
         self.font = self.load_font()
+        self.data_ready = threading.Event()
+        self.data_thread = None
+
+    def start_data_collection(self):
+        """启动唯一的后台系统数据采集线程。"""
+        if self.data_thread is not None and self.data_thread.is_alive():
+            return
+        self.data_thread = threading.Thread(
+            target=self._data_collection_loop,
+            name="系统数据采集",
+            daemon=True,
+        )
+        self.data_thread.start()
+
+    def _data_collection_loop(self):
+        """持续在后台更新完整数据快照。"""
+        while True:
+            started = time.monotonic()
+            try:
+                self.collect_system_data()
+                self.data_ready.set()
+            except Exception:
+                print("后台数据采集异常：%s" % traceback.format_exc())
+            time.sleep(max(0.1, refresh_interval - (time.monotonic() - started)))
         
     def load_font(self):
         """加载字体，使用18号字体以提高可读性"""
@@ -64,7 +85,7 @@ class SystemMonitor:
         return font
     
     def collect_system_data(self):
-        """收集系统资源数据"""
+        """在后台线程收集系统资源数据。"""
         data = {}
         
         # CPU使用率
@@ -178,9 +199,8 @@ class SystemMonitor:
         return (r, g, b)
     
     def create_display_image(self):
-        """根据当前显示模式创建图像（只保留网格布局）"""
-        # 收集系统数据
-        self.collect_system_data()
+        """仅使用后台数据快照创建网格布局图像。"""
+        self.start_data_collection()
         
         # 创建黑色背景图像
         image = Image.new("RGB", (SHOW_WIDTH, SHOW_HEIGHT), (0, 0, 0))
@@ -209,6 +229,9 @@ class SystemMonitor:
 
 # 创建全局监控器实例
 monitor = SystemMonitor()
+frame_lock = threading.Lock()
+frame_payload = b""
+frame_thread = None
 
 def digit_to_ints(di):
     """将32位整数拆分为4个字节"""
@@ -395,24 +418,38 @@ def set_device_state(state):
             ser.close()
 
 def show_PC_state():
-    """显示系统状态到LCD屏幕"""
-    global last_refresh_time, wait_time, current_monoto_time, refresh_interval
-    
-    # 创建显示图像
-    image = monitor.create_display_image()
-    
-    # 转换为RGB565格式并发送到设备
-    rgb888 = np.asarray(image, dtype=np.uint32)
-    rgb565 = rgb888_to_rgb565(rgb888)
-    hex_use = Screen_Date_Process(rgb565.flatten())
-    SER_rw(hex_use, read=False)
+    """立即读取后台已编码帧并发送到 LCD。"""
+    with frame_lock:
+        payload = frame_payload
+    if payload:
+        SER_rw(payload, read=False)
 
-    # 控制刷新频率（使用配置的刷新间隔）
-    seconds_elapsed = current_monoto_time - last_refresh_time
-    last_refresh_time = current_monoto_time
-    wait_time += refresh_interval - seconds_elapsed
-    if wait_time > 0:
-        time.sleep(wait_time)
+
+def render_frame_task():
+    """在后台持续绘图并完成颜色转换及协议压缩。"""
+    global frame_payload
+    while True:
+        started = time.monotonic()
+        try:
+            image = monitor.create_display_image()
+            rgb888 = np.asarray(image, dtype=np.uint32)
+            rgb565 = rgb888_to_rgb565(rgb888)
+            payload = bytes(Screen_Date_Process(rgb565.flatten()))
+            with frame_lock:
+                frame_payload = payload
+        except Exception:
+            print("后台帧生成异常：%s" % traceback.format_exc())
+        time.sleep(max(0.1, refresh_interval - (time.monotonic() - started)))
+
+
+def start_background_tasks():
+    """启动数据采集与帧生成后台线程。"""
+    global frame_thread
+    monitor.start_data_collection()
+    if frame_thread is not None and frame_thread.is_alive():
+        return
+    frame_thread = threading.Thread(target=render_frame_task, name="屏幕帧生成", daemon=True)
+    frame_thread.start()
 
 def Get_MSN_Device(port_list):
     """搜索并连接MSN设备"""
@@ -493,16 +530,18 @@ def Read_ADC_CH(ch):
 
 def daemon_task():
     """主循环任务"""
-    global Device_State, current_monoto_time
+    global Device_State
 
+    start_background_tasks()
     while True:
         try:
             if Device_State == 1:
                 # 设备已连接，正常显示系统状态
-                current_monoto_time = time.monotonic()
+                started = time.monotonic()
                 LCD_ADD(0, 0, SHOW_WIDTH, SHOW_HEIGHT)
                 LCD_Set_Color(WHITE, BLACK)
                 show_PC_state()
+                time.sleep(max(0, refresh_interval - (time.monotonic() - started)))
                 continue
 
             # 搜索可用设备

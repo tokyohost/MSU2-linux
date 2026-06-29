@@ -56,13 +56,70 @@ class SystemMonitor:
         self.ping_history = deque([0] * 18, maxlen=18)
         self.upload_history = deque([0] * 26, maxlen=26)
         self.download_history = deque([0] * 26, maxlen=26)
-        counters = psutil.net_io_counters()
-        self.last_net_bytes = (counters.bytes_sent, counters.bytes_recv)
-        self.last_net_time = time.monotonic()
+        self.last_net_bytes = None
+        self.last_net_time = None
         self.font_tiny = self._load_font(6)
         self.font_small = self._load_font(7)
         self.font_normal = self._load_font(8)
         self.font_large = self._load_font(10)
+        self.data_lock = threading.Lock()
+        self.data_ready = threading.Event()
+        self.data_thread = None
+        self.cached_data = {
+            "cpu": 0,
+            "temperature": None,
+            "memory_percent": 0,
+            "memory_capacity": "0/0B",
+            "disk_percent": 0,
+            "disk_capacity": "0/0B",
+            "upload": 0,
+            "download": 0,
+            "ping": None,
+            "ip": "采集中",
+            "online": False,
+            "uptime": 0,
+            "current_time": dt.datetime.now(),
+            "snapshot_monotonic": time.monotonic(),
+            "cpu_history": tuple(self.cpu_history),
+            "ping_history": tuple(self.ping_history),
+            "upload_history": tuple(self.upload_history),
+            "download_history": tuple(self.download_history),
+        }
+
+    def start_data_collection(self):
+        """启动唯一的后台数据采集线程。"""
+        if self.data_thread is not None and self.data_thread.is_alive():
+            return
+        self.data_thread = threading.Thread(
+            target=self._data_collection_loop,
+            name="系统数据采集",
+            daemon=True,
+        )
+        self.data_thread.start()
+
+    def _data_collection_loop(self):
+        """持续在后台采集数据并发布不可变显示快照。"""
+        while True:
+            started = time.monotonic()
+            try:
+                data = self.collect_system_data()
+                with self.data_lock:
+                    self.cached_data = data
+                self.data_ready.set()
+            except Exception:
+                print(f"后台数据采集异常：\n{traceback.format_exc()}")
+            time.sleep(max(0.1, REFRESH_INTERVAL - (time.monotonic() - started)))
+
+    def get_cached_data(self):
+        """立即返回最近一次完成的数据快照，不等待任何系统查询。"""
+        self.start_data_collection()
+        with self.data_lock:
+            return dict(self.cached_data)
+
+    def wait_for_data(self, timeout=None):
+        """等待首份后台数据，供非实时预览模式使用。"""
+        self.start_data_collection()
+        return self.data_ready.wait(timeout)
 
     @staticmethod
     def _load_font(size):
@@ -253,15 +310,19 @@ class SystemMonitor:
             return None
 
     def collect_system_data(self):
-        """采集 CPU、内存、磁盘、网络和运行时间数据。"""
+        """在后台线程采集 CPU、内存、磁盘、网络和运行时间数据。"""
         now = time.monotonic()
         cpu_percent = round(psutil.cpu_percent(interval=None))
         memory = psutil.virtual_memory()
         disk_used, disk_total = self._get_all_disks_usage()
         counters = psutil.net_io_counters()
-        elapsed = max(now - self.last_net_time, 0.001)
-        upload = max(0, counters.bytes_sent - self.last_net_bytes[0]) * 8 / elapsed
-        download = max(0, counters.bytes_recv - self.last_net_bytes[1]) * 8 / elapsed
+        if self.last_net_bytes is None or self.last_net_time is None:
+            upload = 0
+            download = 0
+        else:
+            elapsed = max(now - self.last_net_time, 0.001)
+            upload = max(0, counters.bytes_sent - self.last_net_bytes[0]) * 8 / elapsed
+            download = max(0, counters.bytes_recv - self.last_net_bytes[1]) * 8 / elapsed
         self.last_net_bytes = (counters.bytes_sent, counters.bytes_recv)
         self.last_net_time = now
 
@@ -284,6 +345,12 @@ class SystemMonitor:
             "ip": local_ip,
             "online": local_ip != "未连接",
             "uptime": max(0, int(time.time() - psutil.boot_time())),
+            "current_time": dt.datetime.now(),
+            "snapshot_monotonic": time.monotonic(),
+            "cpu_history": tuple(self.cpu_history),
+            "ping_history": tuple(self.ping_history),
+            "upload_history": tuple(self.upload_history),
+            "download_history": tuple(self.download_history),
         }
 
     @staticmethod
@@ -345,7 +412,7 @@ class SystemMonitor:
 
         draw.text((3, 2), "CPU", font=self.font_normal, fill=BLUE)
         draw.text((38, 2), f"{data['cpu']}%", font=self.font_normal, fill=BLUE, anchor="ra")
-        self._draw_sparkline(draw, (3, 12, 37, 20), self.cpu_history, BLUE, 100)
+        self._draw_sparkline(draw, (3, 12, 37, 20), data["cpu_history"], BLUE, 100)
         temperature = "--" if data["temperature"] is None else str(data["temperature"])
         draw.text((3, 21), f"温度 {temperature}°C", font=self.font_small, fill=WHITE)
 
@@ -374,30 +441,38 @@ class SystemMonitor:
         draw.text((3, 35), "↑上传", font=self.font_normal, fill=BLUE)
         draw.text((72, 35), self._format_speed(data["upload"]), font=self.font_normal,
                   fill=BLUE, anchor="ra")
-        self._draw_bars(draw, (3, 44, 72, 49), self.upload_history, BLUE)
+        self._draw_bars(draw, (3, 44, 72, 49), data["upload_history"], BLUE)
         draw.text((3, 52), "↓下载", font=self.font_normal, fill=GREEN)
         draw.text((72, 52), self._format_speed(data["download"]), font=self.font_normal,
                   fill=GREEN, anchor="ra")
-        self._draw_bars(draw, (3, 61, 72, 66), self.download_history, GREEN)
+        self._draw_bars(draw, (3, 61, 72, 66), data["download_history"], GREEN)
 
         delay_text = "-- ms" if data["ping"] is None else f"{data['ping']} ms"
         draw.text((79, 35), "PING 延迟", font=self.font_normal, fill=PURPLE)
         draw.text((157, 35), delay_text, font=self.font_normal, fill=PURPLE, anchor="ra")
         draw.line((83, 49, 157, 49), fill=(50, 50, 56))
         draw.line((83, 58, 157, 58), fill=(50, 50, 56))
-        self._draw_sparkline(draw, (83, 45, 157, 66), self.ping_history, PURPLE, 100)
+        self._draw_sparkline(draw, (83, 45, 157, 66), data["ping_history"], PURPLE, 100)
 
     def _draw_footer(self, draw, data):
         """绘制底部日期时间及系统运行时长。"""
-        now = dt.datetime.now()
+        now = data["current_time"]
         draw.line((2, 69, 157, 69), fill=GRAY)
         draw.text((4, 72), now.strftime("%m-%d %H:%M:%S"), font=self.font_small, fill=WHITE)
         draw.text((157, 72), self._format_uptime(data['uptime']),
                   font=self.font_small, fill=WHITE, anchor="ra")
 
+    def get_display_data(self):
+        """基于缓存快照生成持续推进的当前显示数据。"""
+        data = self.get_cached_data()
+        snapshot_age = max(0, time.monotonic() - data["snapshot_monotonic"])
+        data["uptime"] += int(snapshot_age)
+        data["current_time"] = dt.datetime.now()
+        return data
+
     def create_display_image(self):
-        """采集当前数据并生成一帧 160×80 RGB 图像。"""
-        data = self.collect_system_data()
+        """仅使用后台快照生成一帧 160×80 RGB 图像。"""
+        data = self.get_display_data()
         image = Image.new("RGB", (SHOW_WIDTH, SHOW_HEIGHT), BLACK)
         draw = ImageDraw.Draw(image)
         self._draw_header(draw, data)
@@ -407,6 +482,10 @@ class SystemMonitor:
 
 
 monitor = SystemMonitor()
+frame_lock = threading.Lock()
+frame_ready = threading.Event()
+frame_payload = b""
+frame_thread = None
 
 
 def digit_to_ints(value):
@@ -562,15 +641,44 @@ def connect_device(port_list):
 
 
 def show_pc_state():
-    """生成系统状态图像，并转换后发送到 LCD。"""
-    image = monitor.create_display_image()
-    rgb565 = rgb888_to_rgb565(np.asarray(image, dtype=np.uint32))
-    serial_read_write(screen_data_process(rgb565.flatten()), read=False)
+    """立即读取后台已编码帧并发送到 LCD。"""
+    with frame_lock:
+        payload = frame_payload
+    if payload:
+        serial_read_write(payload, read=False)
+
+
+def render_frame_task():
+    """在后台持续绘图并完成 RGB565 转换及协议压缩。"""
+    global frame_payload
+    while True:
+        started = time.monotonic()
+        try:
+            image = monitor.create_display_image()
+            rgb565 = rgb888_to_rgb565(np.asarray(image, dtype=np.uint32))
+            payload = bytes(screen_data_process(rgb565.flatten()))
+            with frame_lock:
+                frame_payload = payload
+            frame_ready.set()
+        except Exception:
+            print(f"后台帧生成异常：\n{traceback.format_exc()}")
+        time.sleep(max(0.1, REFRESH_INTERVAL - (time.monotonic() - started)))
+
+
+def start_background_tasks():
+    """启动数据采集与帧生成后台线程。"""
+    global frame_thread
+    monitor.start_data_collection()
+    if frame_thread is not None and frame_thread.is_alive():
+        return
+    frame_thread = threading.Thread(target=render_frame_task, name="屏幕帧生成", daemon=True)
+    frame_thread.start()
 
 
 def daemon_task():
     """持续刷新屏幕，并在连接断开后自动重连。"""
     global device_state
+    start_background_tasks()
     while True:
         try:
             if device_state == 1:
@@ -595,6 +703,7 @@ def daemon_task():
 
 def save_preview(output_path):
     """生成本地预览图，便于在没有 LCD 时检查布局。"""
+    monitor.wait_for_data(timeout=10)
     image = monitor.create_display_image()
     image.resize((SHOW_WIDTH * 6, SHOW_HEIGHT * 6), Image.Resampling.NEAREST).save(output_path)
     print(f"预览图已保存：{os.path.abspath(output_path)}")
