@@ -57,6 +57,7 @@ def create_argument_parser():
         help="是否启用屏幕上下翻转",
     )
     parser.add_argument("--list-templates", action="store_true", help="列出可用显示模板")
+    parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
     return parser
 
 
@@ -99,10 +100,17 @@ def main():
     parser = create_argument_parser()
     arguments, remaining_arguments = parser.parse_known_args()
     if arguments.list_templates:
-        print("\n".join(TEMPLATE_FILES))
+        if sys.stdout is not None:
+            print("\n".join(TEMPLATE_FILES))
         return
     if arguments.refresh_interval <= 0:
         parser.error("--refresh-interval 必须大于 0")
+    if sys.platform == "win32" and not arguments.worker:
+        from windows_tray import WindowsTrayApplication
+
+        tray_arguments = [argument for argument in sys.argv[1:] if argument != "--worker"]
+        WindowsTrayApplication(tray_arguments).run()
+        return
     run_template(arguments.template, arguments, remaining_arguments)
 
 
