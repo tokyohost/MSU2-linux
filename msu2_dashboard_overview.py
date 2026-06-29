@@ -25,7 +25,7 @@ from PIL import Image, ImageDraw, ImageFont
 SHOW_WIDTH = 160
 SHOW_HEIGHT = 80
 SERIAL_BAUDRATE = 115200
-REFRESH_INTERVAL = 2.0
+REFRESH_INTERVAL = 1.0
 LCD_FLIP_VERTICAL = False
 PING_TARGET = "www.baidu.com"
 
@@ -136,8 +136,8 @@ class SystemMonitor:
     def get_cached_data(self):
         """立即返回最近一次完成的数据快照，不等待任何系统查询。"""
         self.start_data_collection()
-        # with self.data_lock:
-        return dict(self.cached_data)
+        with self.data_lock:
+            return dict(self.cached_data)
 
     def wait_for_data(self, timeout=None):
         """等待首份后台数据，供非实时预览模式使用。"""
@@ -189,6 +189,7 @@ class SystemMonitor:
 
     @staticmethod
     def _get_cpu_temperature():
+
         """通过 psutil 与 Linux sysfs 多级回退读取 CPU 温度。"""
         candidates = []
         try:
@@ -509,7 +510,8 @@ class SystemMonitor:
 monitor = SystemMonitor()
 frame_lock = threading.Lock()
 frame_ready = threading.Event()
-frame_payload = b""
+frame_rgb565 = None
+last_sent_frame = None
 frame_thread = None
 
 
@@ -519,7 +521,7 @@ def digit_to_ints(value):
 
 
 def rgb888_to_rgb565(rgb888_array):
-    """将 RGB888 图像数组转换为 RGB565 数组。"""
+    """无损地将 RGB888 图像数组转换为 RGB565 数组。"""
     red = (rgb888_array[:, :, 0] & 0xF8) << 8
     green = (rgb888_array[:, :, 1] & 0xFC) << 3
     blue = (rgb888_array[:, :, 2] & 0xF8) >> 3
@@ -601,10 +603,12 @@ def serial_read_write(data, read=True, minimum_size=0):
 
 def set_device_state(state):
     """更新设备连接状态，并在断开时安全关闭串口。"""
-    global device_state, ser
+    global device_state, ser, last_sent_frame
     device_state = state
-    if state == 0 and ser is not None and ser.is_open:
-        ser.close()
+    if state == 0:
+        last_sent_frame = None
+        if ser is not None and ser.is_open:
+            ser.close()
 
 
 def lcd_add(x, y, width, height):
@@ -665,25 +669,88 @@ def connect_device(port_list):
     return False
 
 
+def build_dirty_regions(current_frame, previous_frame, band_height=8, padding=2):
+    """按横向分带生成包含变化像素及邻近边距的局部更新区域。"""
+    if previous_frame is None or previous_frame.shape != current_frame.shape:
+        return [(0, 0, current_frame.shape[1], current_frame.shape[0])]
+
+    changed_pixels = current_frame != previous_frame
+    frame_height, frame_width = current_frame.shape
+    regions = []
+    for top in range(0, frame_height, band_height):
+        bottom = min(top + band_height, frame_height)
+        changed_columns = np.flatnonzero(np.any(changed_pixels[top:bottom], axis=0))
+        if changed_columns.size == 0:
+            continue
+        left = max(0, int(changed_columns[0]) - padding)
+        right = min(frame_width, int(changed_columns[-1]) + padding + 1)
+        width = right - left
+        height = bottom - top
+        if width * height % 2:
+            if right < frame_width:
+                right += 1
+            elif left > 0:
+                left -= 1
+        regions.append((left, top, right - left, height))
+    return regions
+
+
+def encode_frame_region(frame, region):
+    """将指定 RGB565 帧区域编码为设备分页协议数据。"""
+    left, top, width, height = region
+    pixels = frame[top:top + height, left:left + width]
+    return bytes(screen_data_process(pixels.flatten()))
+
+
+def prepare_frame_updates(current_frame, previous_frame):
+    """生成局部更新数据，并在局部数据更大时自动回退为全帧更新。"""
+    regions = build_dirty_regions(current_frame, previous_frame)
+    if not regions:
+        return []
+
+    updates = [(region, encode_frame_region(current_frame, region)) for region in regions]
+    full_region = (0, 0, current_frame.shape[1], current_frame.shape[0])
+    full_payload = encode_frame_region(current_frame, full_region)
+    regional_size = sum(len(payload) + 24 for _, payload in updates)
+    if len(updates) > 1 and regional_size >= len(full_payload):
+        return [(full_region, full_payload)]
+    return updates
+
+
 def show_pc_state():
-    """立即读取后台已编码帧并发送到 LCD。"""
+    """发送当前帧的变化区域，并返回发送字节数与区域数量。"""
+    global last_sent_frame
     with frame_lock:
-        payload = frame_payload
-    if payload:
+        current_frame = frame_rgb565
+    if current_frame is None:
+        return 0, 0
+
+    updates = prepare_frame_updates(current_frame, last_sent_frame)
+    sent_bytes = 0
+    for region, payload in updates:
+        left, top, width, height = region
+        if not lcd_add(left, top, width, height):
+            set_device_state(0)
+            return sent_bytes, len(updates)
+        lcd_set_color(LCD_WHITE, LCD_BLACK)
         serial_read_write(payload, read=False)
+        if device_state != 1:
+            return sent_bytes, len(updates)
+        sent_bytes += len(payload)
+    last_sent_frame = current_frame.copy()
+    return sent_bytes, len(updates)
 
 
 def render_frame_task():
-    """在后台持续绘图并完成 RGB565 转换及协议压缩。"""
-    global frame_payload
+    """在后台持续绘图并发布未经像素过滤的完整 RGB565 帧。"""
+    global frame_rgb565
     while True:
         started = time.monotonic()
         try:
             image = monitor.create_display_image()
             rgb565 = rgb888_to_rgb565(np.asarray(image, dtype=np.uint32))
-            payload = bytes(screen_data_process(rgb565.flatten()))
             with frame_lock:
-                frame_payload = payload
+                frame_rgb565 = rgb565
             frame_ready.set()
         except Exception:
             print(f"后台帧生成异常：\n{traceback.format_exc()}")
@@ -708,12 +775,17 @@ def daemon_task():
         try:
             if device_state == 1:
                 started = time.monotonic()
-                if not lcd_add(0, 0, SHOW_WIDTH, SHOW_HEIGHT):
-                    set_device_state(0)
-                    continue
-                lcd_set_color(LCD_WHITE, LCD_BLACK)
-                show_pc_state()
-                time.sleep(max(0, REFRESH_INTERVAL - (time.monotonic() - started)))
+                payload_size, region_count = show_pc_state()
+                elapsed = time.monotonic() - started
+                if elapsed > REFRESH_INTERVAL * 1.1:
+                    logger.warning(
+                        "屏幕发送耗时 %.3f 秒，局部区域 %s 个、数据 %s 字节，已超过 %.3f 秒刷新间隔",
+                        elapsed,
+                        region_count,
+                        payload_size,
+                        REFRESH_INTERVAL,
+                    )
+                time.sleep(max(0, REFRESH_INTERVAL - elapsed))
                 continue
             ports = [port for port in serial.tools.list_ports.comports()
                      if getattr(port, "vid", None) == 0x1A86]

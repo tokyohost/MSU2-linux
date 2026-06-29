@@ -50,32 +50,50 @@ class DiskTemperatureMonitor(base.SystemMonitor):
         self.cpu_temperature_time = 0.0
         self.ping_cache = None
         self.ping_time = 0.0
-        self.slow_data_thread = None
+        self.ping_data_thread = None
+        self.hardware_data_thread = None
         self.cached_data["disk_temperatures"] = ()
 
     def start_data_collection(self):
         """分别启动基础数据线程和慢速硬件数据线程。"""
         super().start_data_collection()
-        if self.slow_data_thread is not None and self.slow_data_thread.is_alive():
-            return
-        self.slow_data_thread = threading.Thread(
-            target=self._slow_data_collection_loop,
-            name="慢速硬件数据采集",
-            daemon=True,
-        )
-        self.slow_data_thread.start()
+        if self.ping_data_thread is None or not self.ping_data_thread.is_alive():
+            self.ping_data_thread = threading.Thread(
+                target=self._ping_data_collection_loop,
+                name="网络延迟采集",
+                daemon=True,
+            )
+            self.ping_data_thread.start()
+        if self.hardware_data_thread is None or not self.hardware_data_thread.is_alive():
+            self.hardware_data_thread = threading.Thread(
+                target=self._hardware_data_collection_loop,
+                name="硬件温度采集",
+                daemon=True,
+            )
+            self.hardware_data_thread.start()
 
-    def _slow_data_collection_loop(self):
-        """独立采集可能阻塞的 Ping、WMI、SMART 与磁盘温度。"""
+    def _ping_data_collection_loop(self):
+        """按固定休眠间隔采集网络延迟，避免硬件查询阻塞 Ping 更新。"""
+        while True:
+            try:
+                self._collect_ping_delay()
+            except Exception:
+                logger.exception("网络延迟采集异常")
+            time.sleep(PING_CACHE_SECONDS)
+
+    def _hardware_data_collection_loop(self):
+        """串行采集 CPU 与磁盘温度，并在完成后固定休眠以限制系统负载。"""
         while True:
             started = time.monotonic()
             try:
-                self._collect_ping_delay()
                 self._collect_cpu_temperature()
                 self._get_disk_temperatures()
             except Exception:
-                logger.exception("慢速硬件数据采集异常")
-            time.sleep(max(0.1, PING_CACHE_SECONDS - (time.monotonic() - started)))
+                logger.exception("硬件温度采集异常")
+            elapsed = time.monotonic() - started
+            if elapsed > SLOW_DATA_CACHE_SECONDS:
+                logger.warning("硬件温度采集耗时 %.3f 秒，已自动降低查询频率", elapsed)
+            time.sleep(SLOW_DATA_CACHE_SECONDS)
 
     @staticmethod
     def _run_powershell_json(script):
