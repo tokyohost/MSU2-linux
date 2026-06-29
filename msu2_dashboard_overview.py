@@ -25,7 +25,7 @@ from PIL import Image, ImageDraw, ImageFont
 SHOW_WIDTH = 160
 SHOW_HEIGHT = 80
 SERIAL_BAUDRATE = 115200
-REFRESH_INTERVAL = 1.0
+REFRESH_INTERVAL = 2.0
 LCD_FLIP_VERTICAL = False
 PING_TARGET = "www.baidu.com"
 
@@ -328,6 +328,7 @@ class SystemMonitor:
                 stderr=subprocess.DEVNULL,
                 timeout=1.5,
                 check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             return round((time.monotonic() - started) * 1000) if result.returncode == 0 else None
         except (OSError, subprocess.TimeoutExpired):
