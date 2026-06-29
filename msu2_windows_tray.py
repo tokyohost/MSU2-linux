@@ -7,7 +7,6 @@ import subprocess
 import sys
 import threading
 import winreg
-from collections import deque
 from pathlib import Path
 
 import pystray
@@ -18,6 +17,7 @@ APPLICATION_NAME = "MSU2 系统监控"
 AUTOSTART_VALUE_NAME = "MSU2Monitor"
 MUTEX_NAME = "Local\\MSU2MonitorTray"
 CREATE_NO_WINDOW = 0x08000000
+CREATE_NEW_CONSOLE = 0x00000010
 ERROR_ALREADY_EXISTS = 183
 
 
@@ -28,9 +28,8 @@ class WindowsTrayApplication:
         """初始化托盘状态、日志缓存和后台进程参数。"""
         self.worker_arguments = list(worker_arguments)
         self.worker_process = None
+        self.console_process = None
         self.tray_icon = None
-        self.console_stream = None
-        self.log_lines = deque(maxlen=1000)
         self.stopping = threading.Event()
         self.mutex_handle = None
         data_directory = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "MSU2Monitor"
@@ -91,59 +90,66 @@ class WindowsTrayApplication:
         threading.Thread(target=self._collect_worker_output, name="日志收集", daemon=True).start()
 
     def _collect_worker_output(self):
-        """持续保存后台进程输出，并同步到已打开的日志控制台。"""
+        """持续将后台监控进程输出保存到 UTF-8 日志文件。"""
         if self.worker_process is None or self.worker_process.stdout is None:
             return
         with self.log_path.open("a", encoding="utf-8", newline="") as log_file:
             for line in self.worker_process.stdout:
-                self.log_lines.append(line)
                 log_file.write(line)
                 log_file.flush()
-                stream = self.console_stream
-                if stream is not None:
-                    try:
-                        stream.write(line)
-                    except OSError:
-                        self.console_stream = None
         return_code = self.worker_process.wait()
         if not self.stopping.is_set():
             message = f"后台监控进程已退出，返回码：{return_code}\n"
-            self.log_lines.append(message)
             if self.tray_icon is not None:
                 self.tray_icon.notify(message.strip(), APPLICATION_NAME)
 
+    def _is_console_open(self):
+        """检查独立日志控制台进程是否仍在运行。"""
+        return self.console_process is not None and self.console_process.poll() is None
+
     def _show_console(self):
-        """分配日志控制台并显示本次运行已缓存的输出。"""
-        if self.console_stream is not None:
+        """启动独立 PowerShell 控制台并持续显示日志文件末尾内容。"""
+        if self._is_console_open():
             return
-        if not ctypes.windll.kernel32.AllocConsole():
-            return
-        ctypes.windll.kernel32.SetConsoleTitleW(f"{APPLICATION_NAME} - 运行日志")
-        self.console_stream = open("CONOUT$", "w", encoding="utf-8", buffering=1)
-        self.console_stream.write(f"日志文件：{self.log_path}\n\n")
-        for line in tuple(self.log_lines):
-            self.console_stream.write(line)
+        environment = os.environ.copy()
+        environment["MSU2_LOG_PATH"] = str(self.log_path)
+        script = (
+            "[Console]::OutputEncoding=[Text.Encoding]::UTF8;"
+            "$Host.UI.RawUI.WindowTitle='MSU2 系统监控 - 运行日志';"
+            "Write-Host ('日志文件：' + $env:MSU2_LOG_PATH);"
+            "Write-Host '';"
+            "Get-Content -LiteralPath $env:MSU2_LOG_PATH -Encoding UTF8 -Tail 200 -Wait"
+        )
+        self.console_process = subprocess.Popen(
+            ["powershell.exe", "-NoLogo", "-NoProfile", "-Command", script],
+            env=environment,
+            creationflags=CREATE_NEW_CONSOLE,
+        )
 
     def _hide_console(self):
-        """关闭当前日志控制台但保持后台监控继续运行。"""
-        stream = self.console_stream
-        self.console_stream = None
-        if stream is not None:
-            stream.close()
-        ctypes.windll.kernel32.FreeConsole()
+        """关闭独立日志控制台但保持后台监控继续运行。"""
+        process = self.console_process
+        self.console_process = None
+        if process is None or process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            process.kill()
 
     def _toggle_console(self, icon=None, item=None):
         """根据当前状态打开或关闭日志控制台。"""
-        if self.console_stream is None:
-            self._show_console()
-        else:
+        if self._is_console_open():
             self._hide_console()
+        else:
+            self._show_console()
         if icon is not None:
             icon.update_menu()
 
     def _get_console_menu_text(self, item):
         """返回符合当前控制台状态的托盘菜单文字。"""
-        return "打开日志控制台" if self.console_stream is None else "关闭日志控制台"
+        return "关闭日志控制台" if self._is_console_open() else "打开日志控制台"
 
     @staticmethod
     def _get_autostart_command():
@@ -222,7 +228,7 @@ class WindowsTrayApplication:
                 self.worker_process.wait(timeout=3)
             except subprocess.TimeoutExpired:
                 self.worker_process.kill()
-        if self.console_stream is not None:
+        if self._is_console_open():
             self._hide_console()
         icon.stop()
 

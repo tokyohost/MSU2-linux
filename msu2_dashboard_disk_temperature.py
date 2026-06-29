@@ -407,11 +407,10 @@ if ($items.Count -eq 0) {
         """采集基础系统状态，并读取已缓存的慢速硬件数据。"""
         data = super().collect_system_data()
         data["disk_temperatures"] = tuple(self.disk_temperature_cache)
-        self._log_screen_data(data)
         return data
 
-    def _log_screen_data(self, data):
-        """将当前屏幕展示的全部数据同步输出到控制台日志。"""
+    def _log_system_data(self, data):
+        """记录后台线程刚发布的磁盘温度完整数据快照。"""
         cpu_temperature = "--°C" if data["temperature"] is None else f"{data['temperature']}°C"
         network_status = "ERROR" if data["ping"] is None else f"PING {data['ping']}ms"
         disk_temperatures = ", ".join(
@@ -419,7 +418,7 @@ if ($items.Count -eq 0) {
             for disk_name, temperature in data["disk_temperatures"]
         ) or "未发现磁盘"
         logger.info(
-            "屏幕内容 | CPU=%s%% 温度=%s | 内存=%s%%(%s) | "
+            "异步数据更新 | CPU=%s%% 温度=%s | 内存=%s%%(%s) | "
             "磁盘=%s%%(%s) | 网络=%s IP=%s 上传=%s 下载=%s | "
             "运行时间=%s | 磁盘温度=[%s]",
             data["cpu"],

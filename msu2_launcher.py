@@ -115,7 +115,7 @@ def main():
         return
     if arguments.refresh_interval <= 0:
         parser.error("--refresh-interval 必须大于 0")
-    if sys.platform == "win32" and not arguments.worker:
+    if sys.platform == "win32" and getattr(sys, "frozen", False) and not arguments.worker:
         from msu2_windows_tray import WindowsTrayApplication
 
         tray_arguments = [argument for argument in sys.argv[1:] if argument != "--worker"]

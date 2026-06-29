@@ -4,6 +4,7 @@
 import argparse
 import datetime as dt
 import glob
+import logging
 import os
 import platform
 import socket
@@ -44,6 +45,7 @@ LCD_BLACK = 0x0000
 ser = None
 device_state = 0
 serial_lock = threading.Lock()
+logger = logging.getLogger("MSU2-综合仪表盘")
 
 
 class SystemMonitor:
@@ -105,10 +107,31 @@ class SystemMonitor:
                 data = self.collect_system_data()
                 with self.data_lock:
                     self.cached_data = data
+                self._log_system_data(data)
                 self.data_ready.set()
             except Exception:
-                print(f"后台数据采集异常：\n{traceback.format_exc()}")
+                logger.exception("后台数据采集异常")
             time.sleep(max(0.1, REFRESH_INTERVAL - (time.monotonic() - started)))
+
+    def _log_system_data(self, data):
+        """记录后台线程刚发布的完整系统数据快照。"""
+        temperature = "--°C" if data["temperature"] is None else f"{data['temperature']}°C"
+        ping = "ERROR" if data["ping"] is None else f"{data['ping']}ms"
+        logger.info(
+            "异步数据更新 | CPU=%s%% 温度=%s | 内存=%s%%(%s) | "
+            "磁盘=%s%%(%s) | Ping=%s IP=%s | 上传=%s 下载=%s | 运行时间=%s",
+            data["cpu"],
+            temperature,
+            data["memory_percent"],
+            data["memory_capacity"],
+            data["disk_percent"],
+            data["disk_capacity"],
+            ping,
+            data["ip"],
+            self._format_speed(data["upload"]),
+            self._format_speed(data["download"]),
+            self._format_uptime(data["uptime"]),
+        )
 
     def get_cached_data(self):
         """立即返回最近一次完成的数据快照，不等待任何系统查询。"""
@@ -722,6 +745,12 @@ def parse_boolean(value):
 def main():
     """解析命令行参数并启动预览或硬件显示模式。"""
     global LCD_FLIP_VERTICAL, PING_TARGET, REFRESH_INTERVAL
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
     parser = argparse.ArgumentParser(description="MSU2 Linux 系统监控仪表盘")
     parser.add_argument("--preview", metavar="PNG", help="仅生成放大预览图，不连接设备")
