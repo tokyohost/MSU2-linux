@@ -3,5 +3,6 @@ msu2-linux (1.0.0) unstable; urgency=medium
   * 首次提供 Debian 软件包。
   * 安装并自动启用 systemd 服务。
   * 使用 Debian 系统软件包安装全部运行依赖。
+  * 增加统一启动入口及可配置的显示模板脚本。
 
  -- tokyohost <lsyiloveyou@foxmail.com>  Mon, 29 Jun 2026 10:00:00 +0800

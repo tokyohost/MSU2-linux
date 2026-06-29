@@ -6,8 +6,12 @@ After=network-online.target
 
 [Service]
 Type=simple
+Environment=MSU2_TEMPLATE=MSU2_LINUX-3.py
+Environment=MSU2_PING_TARGET=1.1.1.1
+Environment=MSU2_REFRESH_INTERVAL=1.0
+Environment=MSU2_FLIP_VERTICAL=false
 EnvironmentFile=-/etc/msu2-linux.conf
-ExecStart=/usr/bin/msu2-linux $MSU2_OPTIONS
+ExecStart=/usr/bin/msu2-linux --template ${MSU2_TEMPLATE} --ping-target ${MSU2_PING_TARGET} --refresh-interval ${MSU2_REFRESH_INTERVAL} --flip-vertical ${MSU2_FLIP_VERTICAL}
 Restart=always
 RestartSec=3
 User=root

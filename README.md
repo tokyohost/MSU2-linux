@@ -67,7 +67,23 @@ sudo systemctl restart msu2-linux
 sudo journalctl -u msu2-linux -f
 ```
 
-如需设置附加启动参数，可编辑 `/etc/msu2-linux.conf`，然后执行：
+如需调整运行参数，可编辑 `/etc/msu2-linux.conf`：
+
+```bash
+# 显示模板对应的脚本名称
+MSU2_TEMPLATE="MSU2_LINUX.py"
+
+# 用于检测网络延迟的域名或 IP 地址
+MSU2_PING_TARGET="1.1.1.1"
+
+# 屏幕刷新间隔，单位为秒
+MSU2_REFRESH_INTERVAL="1.0"
+
+# 是否启用屏幕上下翻转
+MSU2_FLIP_VERTICAL="false"
+```
+
+修改配置后重启服务：
 
 ```bash
 sudo systemctl restart msu2-linux
@@ -75,12 +91,18 @@ sudo systemctl restart msu2-linux
 
 服务默认以 `root` 用户运行，以便读取硬件温度并访问 USB 串口设备。
 
-## 配置说明
+## 命令行参数
 
-在 `if __name__ == "__main__":` 代码块中可以配置以下参数：
+手动运行时可使用与服务配置对应的命令行参数：
 
-- `refresh_interval`: 屏幕刷新间隔（秒）
-- `lcd_flip_vertical`: 是否启用屏幕上下翻转（True/False）
+```bash
+msu2-linux --template MSU2_LINUX.py --ping-target www.baidu.com --refresh-interval 1.5 --flip-vertical true
+```
+
+- `--template`：选择显示模板对应的脚本，可使用 `--list-templates` 查看全部模板。
+- `--ping-target`：用于检测延迟的域名或 IP 地址。
+- `--refresh-interval`：屏幕刷新间隔，单位为秒，必须大于 0。
+- `--flip-vertical`：是否启用屏幕上下翻转，支持 `true/false`、`yes/no`、`on/off` 或 `1/0`。
 
 ## 使用方法
 

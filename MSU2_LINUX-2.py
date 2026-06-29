@@ -26,6 +26,7 @@ SHOW_HEIGHT = 80
 SERIAL_BAUDRATE = 115200
 REFRESH_INTERVAL = 1.0
 LCD_FLIP_VERTICAL = False
+PING_TARGET = "1.1.1.1"
 
 # 仪表盘颜色（RGB888）。
 BLACK = (0, 0, 0)
@@ -234,22 +235,10 @@ class SystemMonitor:
 
     @staticmethod
     def _get_ping_delay():
-        """对默认路由执行一次 Ping，并返回毫秒延迟。"""
-        target = "1.1.1.1"
-        if platform.system() == "Linux":
-            try:
-                with open("/proc/net/route", "r", encoding="utf-8") as route_file:
-                    for line in route_file.readlines()[1:]:
-                        fields = line.split()
-                        if len(fields) > 2 and fields[1] == "00000000":
-                            raw = bytes.fromhex(fields[2])
-                            target = socket.inet_ntoa(raw[::-1])
-                            break
-            except (OSError, ValueError):
-                pass
-        command = (["ping", "-n", "1", "-w", "1000", target]
+        """对配置的域名或 IP 地址执行一次 Ping，并返回毫秒延迟。"""
+        command = (["ping", "-n", "1", "-w", "1000", PING_TARGET]
                    if platform.system() == "Windows"
-                   else ["ping", "-c", "1", "-W", "1", target])
+                   else ["ping", "-c", "1", "-W", "1", PING_TARGET])
         started = time.monotonic()
         try:
             result = subprocess.run(
@@ -611,11 +600,34 @@ def save_preview(output_path):
     print(f"预览图已保存：{os.path.abspath(output_path)}")
 
 
+def parse_boolean(value):
+    """将常见的命令行布尔值转换为真或假。"""
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise argparse.ArgumentTypeError("必须使用 true/false、yes/no、on/off 或 1/0")
+
+
 def main():
     """解析命令行参数并启动预览或硬件显示模式。"""
+    global LCD_FLIP_VERTICAL, PING_TARGET, REFRESH_INTERVAL
+
     parser = argparse.ArgumentParser(description="MSU2 Linux 系统监控仪表盘")
     parser.add_argument("--preview", metavar="PNG", help="仅生成放大预览图，不连接设备")
+    parser.add_argument("--ping-target", default=PING_TARGET, metavar="域名或IP",
+                        help="用于检测网络延迟的域名或 IP 地址")
+    parser.add_argument("--refresh-interval", default=REFRESH_INTERVAL, type=float, metavar="秒",
+                        help="屏幕刷新间隔，必须大于 0 秒")
+    parser.add_argument("--flip-vertical", default=LCD_FLIP_VERTICAL, type=parse_boolean,
+                        metavar="布尔值", help="是否启用屏幕上下翻转")
     arguments = parser.parse_args()
+    if arguments.refresh_interval <= 0:
+        parser.error("--refresh-interval 必须大于 0")
+    PING_TARGET = arguments.ping_target
+    REFRESH_INTERVAL = arguments.refresh_interval
+    LCD_FLIP_VERTICAL = arguments.flip_vertical
     if arguments.preview:
         save_preview(arguments.preview)
         return

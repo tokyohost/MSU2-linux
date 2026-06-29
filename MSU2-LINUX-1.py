@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: UTF-8 -*-
 
+import os
 import threading
 import time
 import traceback
@@ -38,8 +39,10 @@ last_refresh_time = current_monoto_time
 wait_time = 0
 ADC_det = 0
 display_mode = 0     # 显示模式: 0=网格布局
-refresh_interval = 1.0  # 刷新间隔（秒）
-lcd_flip_vertical = False  # 屏幕上下翻转
+refresh_interval = float(os.environ.get("MSU2_REFRESH_INTERVAL", "1.0"))  # 刷新间隔（秒）
+lcd_flip_vertical = os.environ.get("MSU2_FLIP_VERTICAL", "false").lower() in {
+    "1", "true", "yes", "on"
+}  # 屏幕上下翻转
 
 class SystemMonitor:
     """采集系统资源数据并生成 LCD 仪表盘画面。"""
@@ -530,11 +533,7 @@ if __name__ == "__main__":
         # 显示模式配置: 0=网格布局（已固定）
         display_mode = 0
         
-        # 刷新频率配置 (秒)
-        refresh_interval = 1.0  # 1秒刷新一次
-        
-        # 屏幕上下翻转配置
-        lcd_flip_vertical = True  # 设置为 True 可以上下翻转屏幕
+        # 刷新频率和屏幕翻转由统一入口或环境变量配置。
         # =========================================
         
         print("当前配置:")
