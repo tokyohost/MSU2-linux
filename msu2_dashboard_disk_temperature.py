@@ -410,12 +410,15 @@ if ($items.Count -eq 0) {
         for disk_name in self._list_physical_disks():
             temperature = self._read_block_temperature(disk_name)
             if temperature is None:
+                temperature = self._read_smart_temperature(f"/dev/{disk_name}")
+            if temperature is None:
                 missing_indexes.append(len(readings))
             readings.append([disk_name, temperature])
 
         fallback_values = self._read_unassigned_sensor_temperatures()
-        for index, temperature in zip(missing_indexes, fallback_values):
-            readings[index][1] = temperature
+        if len(fallback_values) == len(missing_indexes):
+            for index, temperature in zip(missing_indexes, fallback_values):
+                readings[index][1] = temperature
 
         self.disk_temperature_cache = [(name, temperature) for name, temperature in readings]
         self.disk_temperature_time = now
