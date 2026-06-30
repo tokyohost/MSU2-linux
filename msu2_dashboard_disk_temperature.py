@@ -437,6 +437,40 @@ if ($items.Count -eq 0) {
                 return value
         return None
 
+    def _discover_linux_disks(self):
+        """合并 sysfs 与 SMART 扫描结果并返回全部 Linux 物理磁盘描述。"""
+        smart_devices = self._scan_smart_devices()
+        disk_names = set(self._list_physical_disks())
+        disk_names.update(smart_devices)
+
+        disks = []
+        for disk_name in sorted(disk_names, key=self._natural_sort_key):
+            device_path, device_type = smart_devices.get(
+                disk_name,
+                (f"/dev/{disk_name}", None),
+            )
+            disks.append((disk_name, device_path, device_type))
+        return disks
+
+    def _collect_linux_disk_temperatures(self, disks=None):
+        """按 Linux 磁盘描述逐盘读取温度并返回完整采集结果。"""
+        disk_descriptors = disks if disks is not None else self._discover_linux_disks()
+        readings = []
+        missing_indexes = []
+        for disk_name, device_path, device_type in disk_descriptors:
+            temperature = self._read_block_temperature(disk_name)
+            if temperature is None:
+                temperature = self._read_smart_temperature(device_path, device_type)
+            if temperature is None:
+                missing_indexes.append(len(readings))
+            readings.append([disk_name, temperature])
+
+        fallback_values = self._read_unassigned_sensor_temperatures()
+        if len(fallback_values) == len(missing_indexes):
+            for index, temperature in zip(missing_indexes, fallback_values):
+                readings[index][1] = temperature
+        return [(name, temperature) for name, temperature in readings]
+
     def _get_disk_temperatures(self):
         """获取全部物理磁盘的温度，并缓存慢速查询结果。"""
         now = time.monotonic()
@@ -448,30 +482,7 @@ if ($items.Count -eq 0) {
             self.disk_temperature_time = now
             return self.disk_temperature_cache
 
-        smart_devices = self._scan_smart_devices()
-        disk_names = set(self._list_physical_disks())
-        disk_names.update(smart_devices)
-
-        readings = []
-        missing_indexes = []
-        for disk_name in sorted(disk_names, key=self._natural_sort_key):
-            temperature = self._read_block_temperature(disk_name)
-            if temperature is None:
-                device_path, device_type = smart_devices.get(
-                    disk_name,
-                    (f"/dev/{disk_name}", None),
-                )
-                temperature = self._read_smart_temperature(device_path, device_type)
-            if temperature is None:
-                missing_indexes.append(len(readings))
-            readings.append([disk_name, temperature])
-
-        fallback_values = self._read_unassigned_sensor_temperatures()
-        if len(fallback_values) == len(missing_indexes):
-            for index, temperature in zip(missing_indexes, fallback_values):
-                readings[index][1] = temperature
-
-        self.disk_temperature_cache = [(name, temperature) for name, temperature in readings]
+        self.disk_temperature_cache = self._collect_linux_disk_temperatures()
         self.disk_temperature_time = now
         return self.disk_temperature_cache
 

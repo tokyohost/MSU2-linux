@@ -5,7 +5,6 @@ import platform
 import sys
 import unittest
 from pathlib import Path
-from unittest import mock
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -26,33 +25,28 @@ class SystemDiskTemperatureTest(unittest.TestCase):
 
     def test_all_system_disks_have_temperature(self):
         """真实枚举全部磁盘并验证每块磁盘均返回有效温度。"""
-        sysfs_disks = self.monitor._list_physical_disks()
-        smart_devices = self.monitor._scan_smart_devices()
-        discovered_disks = sorted(
-            set(sysfs_disks) | set(smart_devices),
-            key=self.monitor._natural_sort_key,
-        )
+        disks = self.monitor._discover_linux_disks()
+        discovered_disks = [disk_name for disk_name, _, _ in disks]
 
         print("\n系统磁盘温度实机测试")
-        print(f"sysfs 发现磁盘：{sysfs_disks}")
-        print(f"SMART 发现磁盘：{smart_devices}")
+        print("发现磁盘：")
+        for disk_name, device_path, device_type in disks:
+            print(
+                f"  {disk_name:<12} 路径={device_path:<18} "
+                f"类型={device_type or '自动识别'}"
+            )
 
         self.assertTrue(
             discovered_disks,
             "未发现任何物理磁盘，请检查 /sys/class/block 与 smartmontools 安装状态",
         )
 
-        with (
-            mock.patch.object(self.monitor, "_list_physical_disks", return_value=sysfs_disks),
-            mock.patch.object(self.monitor, "_scan_smart_devices", return_value=smart_devices),
-        ):
-            readings = self.monitor._get_disk_temperatures()
+        readings = self.monitor._collect_linux_disk_temperatures(disks)
 
         print("读取结果：")
         for disk_name, temperature in readings:
-            device_path, device_type = smart_devices.get(
-                disk_name,
-                (f"/dev/{disk_name}", "自动识别"),
+            _, device_path, device_type = next(
+                disk for disk in disks if disk[0] == disk_name
             )
             temperature_text = "读取失败" if temperature is None else f"{temperature}°C"
             print(
