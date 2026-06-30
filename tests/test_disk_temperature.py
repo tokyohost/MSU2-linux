@@ -33,6 +33,7 @@ class DiskTemperatureMonitorTest(unittest.TestCase):
         ):
             readings = self.monitor._get_disk_temperatures()
 
+        print(f"SATA SMART 温度采集结果：{readings}")
         self.assertEqual([("sda", 38)], readings)
         smart_reader.assert_called_once_with("/dev/sda")
 
@@ -47,6 +48,7 @@ class DiskTemperatureMonitorTest(unittest.TestCase):
         ):
             readings = self.monitor._get_disk_temperatures()
 
+        print(f"无归属传感器匹配结果：{readings}")
         self.assertEqual([("sda", None), ("sdb", None)], readings)
 
 
