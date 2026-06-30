@@ -247,7 +247,7 @@ if ($values.Count -eq 0) {
                 name = cls._partition_to_disk_name(partition.device)
                 if name:
                     names.add(name)
-        return sorted(names, key=cls._natural_sort_key)[:12]
+        return sorted(names, key=cls._natural_sort_key)
 
     @classmethod
     def _read_block_temperature(cls, disk_name):
@@ -351,11 +351,54 @@ if ($items.Count -eq 0) {
         return readings
 
     @classmethod
-    def _read_smart_temperature(cls, device_path):
-        """使用可选的 smartctl 命令读取 SATA 或 NVMe SMART 温度。"""
+    def _scan_smart_devices(cls):
+        """使用 smartctl 自动发现可读取 SMART 的全部物理磁盘。"""
+        try:
+            result = base.subprocess.run(
+                ["smartctl", "--scan-open", "-j"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=5,
+                check=False,
+                creationflags=getattr(base.subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except (OSError, base.subprocess.TimeoutExpired):
+            return {}
+        try:
+            scan_data = json.loads(result.stdout)
+        except (json.JSONDecodeError, TypeError):
+            return {}
+
+        devices = {}
+        for device in scan_data.get("devices", []):
+            device_path = str(device.get("name", "")).strip()
+            if not device_path or device.get("open_error"):
+                continue
+            device_type = str(device.get("type", "")).strip() or None
+            path_name = os.path.basename(device_path)
+            if re.fullmatch(r"nvme\d+", path_name):
+                disk_name = f"{path_name}n1"
+            elif path_name.isdigit() and device_type:
+                type_parts = re.findall(r"[A-Za-z0-9]+", device_type)
+                disk_name = "".join(type_parts) or f"disk{path_name}"
+            else:
+                disk_name = cls._partition_to_disk_name(device_path)
+            if not disk_name:
+                continue
+            devices[disk_name] = (device_path, device_type)
+        return devices
+
+    @classmethod
+    def _read_smart_temperature(cls, device_path, device_type=None):
+        """使用 smartctl 读取 SATA、NVMe、SCSI 或 USB 转接磁盘温度。"""
         if not device_path:
             return None
-        command = ["smartctl", "-a", "-j", str(device_path)]
+        command = ["smartctl", "-a", "-j"]
+        if device_type:
+            command.extend(["-d", str(device_type)])
+        command.append(str(device_path))
         try:
             result = base.subprocess.run(
                 command,
@@ -395,7 +438,7 @@ if ($items.Count -eq 0) {
         return None
 
     def _get_disk_temperatures(self):
-        """获取最多十二块磁盘的温度，并缓存慢速查询结果。"""
+        """获取全部物理磁盘的温度，并缓存慢速查询结果。"""
         now = time.monotonic()
         if self.disk_temperature_time and now - self.disk_temperature_time < SLOW_DATA_CACHE_SECONDS:
             return self.disk_temperature_cache
@@ -405,12 +448,20 @@ if ($items.Count -eq 0) {
             self.disk_temperature_time = now
             return self.disk_temperature_cache
 
+        smart_devices = self._scan_smart_devices()
+        disk_names = set(self._list_physical_disks())
+        disk_names.update(smart_devices)
+
         readings = []
         missing_indexes = []
-        for disk_name in self._list_physical_disks():
+        for disk_name in sorted(disk_names, key=self._natural_sort_key):
             temperature = self._read_block_temperature(disk_name)
             if temperature is None:
-                temperature = self._read_smart_temperature(f"/dev/{disk_name}")
+                device_path, device_type = smart_devices.get(
+                    disk_name,
+                    (f"/dev/{disk_name}", None),
+                )
+                temperature = self._read_smart_temperature(device_path, device_type)
             if temperature is None:
                 missing_indexes.append(len(readings))
             readings.append([disk_name, temperature])
@@ -519,7 +570,9 @@ if ($items.Count -eq 0) {
 
         temperatures = data["disk_temperatures"]
         draw.text((79, 35), "磁盘温度", font=self.font_normal, fill=base.PURPLE)
-        draw.text((157, 35), f"{len(temperatures)}/12", font=self.font_small,
+        disk_count_text = (f"{len(temperatures)}/12" if len(temperatures) <= 12
+                           else f"12/{len(temperatures)}")
+        draw.text((157, 35), disk_count_text, font=self.font_small,
                   fill=base.PURPLE, anchor="ra")
         if not temperatures:
             draw.text((118, 51), "未发现磁盘", font=self.font_normal,
